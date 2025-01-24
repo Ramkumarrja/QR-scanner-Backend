@@ -18,6 +18,11 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "uploads");
 // Create a single HTTP server
 const server = http.createServer(app);
 
+
+app.get("/", (_req, res) => {
+  res.send({messgae: "server is running"})
+})
+
 // Create a WebSocket server that listens on the same port
 const wss = new WebSocket.Server({ server });
 

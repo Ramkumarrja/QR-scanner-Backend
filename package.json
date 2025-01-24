@@ -1,0 +1,32 @@
+{
+  "name": "websocket",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon src/app.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/express": "^5.0.0",
+    "@types/fs-extra": "^11.0.4",
+    "@types/multer": "^1.4.12",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "fs-extra": "^11.3.0",
+    "http-status": "^2.1.0",
+    "multer": "^1.4.5-lts.1",
+    "nodemon": "^3.1.9",
+    "openai": "^4.80.0",
+    "ts-node": "^10.9.2",
+    "uuid": "^11.0.5",
+    "winston": "^3.17.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.5.13"
+  }
+}

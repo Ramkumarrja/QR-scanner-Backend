@@ -17,6 +17,9 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "uploads");
 // Create HTTP server
 const server = http.createServer(app);
 
+// Map to track clientId and socketId relationships
+const clientIdToSocketMap = new Map<string, string>();
+
 // Initialize Socket.IO
 const io = new Server(server, {
   cors: {
@@ -38,62 +41,53 @@ app.get("/", (_req, res) => {
 
 // Socket.IO connection handler
 io.on("connection", (socket) => {
-  console.log(`[Backend] New client connected: ${socket.id}`);
+  console.info(`[backend] New Client Connected: ${socket.id}`);
+  console.info(`[backend] ClientID SocketMAP: ${JSON.stringify([...clientIdToSocketMap])}`);
 
-
-  socket.emit("session_id", {
-    sessionId:socket.id
-  })
+  // Handle client registration
+  socket.on("register", ({ clientId }) => {
+    clientIdToSocketMap.set(clientId, socket.id);
+    console.info(`[backend] Registered clientId: ${clientId} -> socketId: ${socket.id}`);
+  });
 
   // Handle file upload
   socket.on("file_upload", async (data) => {
-    console.log("[Backend] Received file upload data:", data.sessionId);
+    console.info("[backend] Received file upload data:", data.clientId);
 
-    const { sessionId, fileData } = data;
-    const fileName = `${uuidv4()}.jpg`;
-    const filePath = path.join(UPLOAD_DIR, fileName);
+    const targetSocketId = clientIdToSocketMap.get(data.clientId);
+    console.info(`[backend] Target Socket Id: ${targetSocketId}`);
 
-    // Save file
-    const base64Data = fileData.replace(/^data:image\/\w+;base64,/, "");
-    fs.writeFile(filePath, Buffer.from(base64Data, "base64"), async (err) => {
-      if (err) {
-        console.error("[Backend] Error saving file:", err);
-        socket.emit("upload_error", { message: "Failed to save file" });
-        return;
-      }
+    // Call OCR service and process the file
+    const { extracted, error, structuredData: guestInfo } = await ocrService(""); // Add actual implementation here
 
-      console.log("sending this information to the clinet ::", sessionId)
+    if (error) {
+      console.error("[backend] OCR service error:", error);
+      socket.emit("ocr_error", { message: "Failed to process OCR" });
+      return;
+    }
 
-      console.log(`[Backend] File saved: ${filePath}`);
+    console.info("[backend] OCR results:", guestInfo);
 
-      // Call OCR service
-      try {
-        const { extracted, error, structuredData: guestInfo } = await ocrService(filePath);
-
-        if (error) {
-          console.error("[Backend] OCR service error:", error);
-          socket.emit("ocr_error", { message: "Failed to process OCR" });
-          return;
-        }
-
-        console.log("[Backend] OCR results:", guestInfo);
-
-        // Send success response
-        io.to(sessionId).emit("file_upload_success", {
-          filePath,
-          guestInfo,
-          sessionId,
-        });
-      } catch (ocrError) {
-        console.error("[Backend] Error in OCR service:", ocrError);
-        socket.emit("ocr_error", { message: "Unexpected OCR error" });
-      }
-    });
+    // Send success response to the target client
+    if (targetSocketId) {
+      io.to(targetSocketId).emit("file_upload_success", {
+        filePath: "hi from wss",
+        guestInfo,
+        sessionId: targetSocketId,
+      });
+    }
   });
 
   // Handle client disconnection
   socket.on("disconnect", () => {
-    console.log(`[Backend] Client disconnected: ${socket.id}`);
+    console.info(`[backend] Client Disconnected: ${socket.id}`);
+
+    // Remove disconnected socketId from the map
+    clientIdToSocketMap.forEach((value, key) => {
+      if (value === socket.id) {
+        clientIdToSocketMap.delete(key);
+      }
+    });
   });
 });
 

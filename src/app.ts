@@ -23,7 +23,7 @@ const clientIdToSocketMap = new Map<string, string>();
 // Initialize Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: "*", // Update with your frontend's origin for security
+    origin: "*", // Update with your frontend's origin for better security
     methods: ["GET", "POST"],
   },
 });
@@ -41,51 +41,79 @@ app.get("/", (_req, res) => {
 
 // Socket.IO connection handler
 io.on("connection", (socket) => {
-  console.info(`[backend] New Client Connected: ${socket.id}`);
-  console.info(`[backend] ClientID SocketMAP: ${JSON.stringify([...clientIdToSocketMap])}`);
+  console.info(`[Backend] New client connected: ${socket.id}`);
 
   // Handle client registration
   socket.on("register", ({ clientId }) => {
+    if (!clientId) {
+      console.error("[Backend] Missing clientId in registration.");
+      return;
+    }
+
     clientIdToSocketMap.set(clientId, socket.id);
-    console.info(`[backend] Registered clientId: ${clientId} -> socketId: ${socket.id}`);
+    console.info(`[Backend] Registered clientId: ${clientId} -> socketId: ${socket.id}`);
   });
 
   // Handle file upload
   socket.on("file_upload", async (data) => {
-    console.info("[backend] Received file upload data:", data.clientId);
+    try {
+      console.info("[Backend] Received file upload request:", data.clientId);
 
-    const targetSocketId = clientIdToSocketMap.get(data.clientId);
-    console.info(`[backend] Target Socket Id: ${targetSocketId}`);
+      const { clientId, fileData } = data;
+      if (!clientId || !fileData) {
+        console.error("[Backend] Missing required file upload data.");
+        socket.emit("upload_error", { message: "Invalid file upload data" });
+        return;
+      }
 
-    // Call OCR service and process the file
-    const { extracted, error, structuredData: guestInfo } = await ocrService(""); // Add actual implementation here
+      const fileName = `${clientId}.jpg`;
+      const filePath = path.join(UPLOAD_DIR, fileName);
 
-    if (error) {
-      console.error("[backend] OCR service error:", error);
-      socket.emit("ocr_error", { message: "Failed to process OCR" });
-      return;
-    }
+      // Save file to the server
+      const base64Data = fileData.replace(/^data:image\/\w+;base64,/, "");
+      fs.writeFileSync(filePath, Buffer.from(base64Data, "base64"));
+      console.log(`[Backend] File saved: ${filePath}`);
 
-    console.info("[backend] OCR results:", guestInfo);
+      // Call OCR service to process the uploaded file
+      const { extracted, error, structuredData: guestInfo } = await ocrService(filePath);
 
-    // Send success response to the target client
-    if (targetSocketId) {
-      io.to(targetSocketId).emit("file_upload_success", {
-        filePath: "hi from wss",
-        guestInfo,
-        sessionId: targetSocketId,
-      });
+      if (error) {
+        console.error("[Backend] OCR service error:", error);
+        socket.emit("ocr_error", { message: "Failed to process OCR" });
+        return;
+      }
+
+      console.info("[Backend] OCR results:", guestInfo);
+
+      // Find the target socket ID using the clientId
+      const targetSocketId = clientIdToSocketMap.get(clientId);
+      console.info(`[Backend] Target socket ID for clientId ${clientId}: ${targetSocketId}`);
+
+      // Send success response to the client
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("file_upload_success", {
+          filePath,
+          guestInfo,
+          sessionId: targetSocketId,
+        });
+      } else {
+        console.warn("[Backend] No active connection for clientId:", clientId);
+      }
+    } catch (err) {
+      console.error("[Backend] Error handling file upload:", err);
+      socket.emit("upload_error", { message: "Internal server error" });
     }
   });
 
   // Handle client disconnection
   socket.on("disconnect", () => {
-    console.info(`[backend] Client Disconnected: ${socket.id}`);
+    console.info(`[Backend] Client disconnected: ${socket.id}`);
 
     // Remove disconnected socketId from the map
     clientIdToSocketMap.forEach((value, key) => {
       if (value === socket.id) {
         clientIdToSocketMap.delete(key);
+        console.info(`[Backend] Removed clientId: ${key} from map.`);
       }
     });
   });
